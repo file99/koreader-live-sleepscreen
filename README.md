@@ -11,11 +11,37 @@ board, anything you can serve as a PNG. The image is refreshed
 Runs on jailbroken Kindles with KOReader on the **stock framework** — no
 `framework stop`, no replacement launcher, reading is never interrupted.
 
+```
+┌─────────────────┐   GET  /your-image.png   ┌──────────────────────┐
+│  your backend    │ ◄──────────────────────── │  Kindle + KOReader   │
+│  (anything that  │                           │  + this patch        │
+│  serves a PNG)   │ ◄──────────────────────── │                      │
+└─────────────────┘  POST ?value=<minutes>     └──────────────────────┘
+                      (optional reading sync)     shows the PNG as the
+                                                  sleep screen, refreshed
+                                                  at suspend + hourly
+```
+
+## What can it show?
+
+Anything you can render into a PNG. This patch was born as the display
+half of a **personal habit tracker**: a tiny serverless backend (Cloudflare
+Worker + a small SQLite-style DB) logs habit ticks from a phone web app,
+renders the current week into a hand-drawn SVG template — filled shapes
+for done habits, partially filled ones for weekly counters — and serves it
+as a grayscale PNG in the Kindle's exact panel size. The sleeping Kindle
+keeps itself up to date all day, and reports reading minutes back via the
+optional webhook. Other natural fits: weather dashboards, calendars/agenda
+views, server status boards, Grafana panel renders — or simply a static
+PNG that a cron job overwrites somewhere.
+
 Tested on: Kindle Paperwhite 11 (2021, MediaTek), firmware 5.18.6,
 KOReader v2026.03. The patch uses only KOReader APIs, so other KOReader
 Kindle devices should work — reports welcome. Not usable on Special Offers
 (ad-supported) devices: KOReader gets no `wakeup_mgr` there, so the
 scheduled part silently disables itself (suspend-time refresh still works).
+It assumes an already-jailbroken device — jailbreaking itself is out of
+scope here (see the [Kindle Modding Wiki](https://kindlemodding.org)).
 
 ## Install
 
@@ -38,6 +64,8 @@ scheduled part silently disables itself (suspend-time refresh still works).
    - ⚙ → **Network**: leave *"Disable Wi-Fi connection when inactive"*
      **off**, turn *"Restore Wi-Fi connection on resume"* **on**.
 
+## Your backend
+
 The `IMAGE_URL` endpoint contract: a plain `GET` (plus the optional
 `X-Token` header) answered with status **200** and an image KOReader can
 decode (PNG recommended, at your device's panel resolution — 1236×1648 on
@@ -45,6 +73,18 @@ a PW11). Any other status quietly keeps the previous image. HTTPS goes
 through LuaSec; self-signed certificates will fail. Note the scheduled
 wake window uses the device's local time — make sure the Kindle's time
 zone is set correctly.
+
+Three recipes, from simple to fancy:
+
+1. **Static file** — a PNG on any web host, overwritten by a cron job or
+   CI pipeline. Zero server code.
+2. **Render endpoint you already have** — Grafana's panel render URL, a
+   Home Assistant camera/dashboard snapshot, etc. (put a proxy in front
+   if it needs auth the patch can't do).
+3. **Your own tiny service** — e.g. a Cloudflare Worker holding state in a
+   DB, rendering it into an SVG template and rasterizing to PNG on request
+   (resvg compiles to WASM and runs fine in a Worker; grayscale output
+   keeps e-ink happy). That's the habit-tracker setup described above.
 
 ### Runtime switches (flag files, no restart needed)
 
