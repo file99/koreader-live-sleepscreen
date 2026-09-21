@@ -319,9 +319,17 @@ end
 -- time refresh then runs with working Wi-Fi and re-arms the alarm.
 local dance = false
 local dance_polls = 0
+local dance_started = 0
 local danceResuspend
 danceResuspend = function()
     if not dance then return end
+    -- a timer chain revived after a suspend must never act: it would
+    -- re-suspend the device right after the user wakes it
+    if os.time() - dance_started > 60 then
+        dance = false
+        logger.info(LOG, "dance: stale timer, aborting")
+        return
+    end
     dance_polls = dance_polls + 1
     local state = Device.powerd.getPowerdState and Device.powerd:getPowerdState() or nil
     if state == "active" and NetworkMgr:isConnected() then
@@ -388,6 +396,7 @@ waitForWifi = function()
         logger.info(LOG, "quiet methods failed - brief wake to connect (dance)")
         dance = true
         dance_polls = 0
+        dance_started = os.time()
         -- keep showing the wallpaper instead of the book while awake;
         -- "ui" = no flash, the content is identical to the current screen
         pcall(redrawSleepScreen, "ui")
@@ -452,6 +461,7 @@ end
 
 local orig_setup = Screensaver.setup
 Screensaver.setup = function(self, ...)
+    dance = false -- a suspend ends any dance; kills revived stale timers
     pcall(refresh)
     pcall(scheduleWakeup)
     return orig_setup(self, ...)
