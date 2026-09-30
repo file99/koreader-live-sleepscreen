@@ -457,6 +457,49 @@ if Device.wakeup_mgr and Device.powerd and Device.powerd.wakeupFromSuspend then
     end
 end
 
+-- Power events (sleep/wake/power button) reach KOReader through a helper
+-- process (lipc-wait-event behind the input module's "fake_events" pipe). If
+-- that helper dies, every input poll returns EPIPE: KOReader busy-loops and
+-- never sees the wake event, so the sleep screen stays up until a restart.
+-- Seen once in ~180 wake cycles, cause unknown. Swap the dead pipe for a
+-- fresh helper instead. If that keeps failing (5 revivals within 5 min),
+-- restart KOReader as a last resort - never leave the device frozen.
+local EPIPE, EINTR = 32, 4
+local input_mod = Device.input and Device.input.input
+if Device:isKindle() and input_mod and input_mod.waitForEvent and not input_mod.is_ffi then
+    local revivals = {}
+    local restarting = false
+    local function reviveHelper()
+        local now = os.time()
+        while revivals[1] and now - revivals[1] > 300 do table.remove(revivals, 1) end
+        if #revivals >= 5 then
+            if not restarting then
+                restarting = true
+                logger.warn(LOG, "power-event helper keeps dying, restarting KOReader")
+                -- takes effect once the EPIPE is passed through to UIManager
+                UIManager:restartKOReader()
+            end
+            return false
+        end
+        table.insert(revivals, now)
+        local ok, fd = pcall(function()
+            Device.input:close("fake_events")
+            return Device.input:open("fake_events")
+        end)
+        logger.warn(LOG, "power-event helper died (EPIPE), reopened:", ok, tostring(fd))
+        return true
+    end
+    local function handle(ok, ev, ...)
+        -- EINTR makes Input:waitEvent retry the poll right away
+        if ok == false and ev == EPIPE and reviveHelper() then return false, EINTR end
+        return ok, ev, ...
+    end
+    local orig_wait = input_mod.waitForEvent
+    input_mod.waitForEvent = function(...)
+        return handle(orig_wait(...))
+    end
+end
+
 -- ---- hooks ----
 
 local orig_setup = Screensaver.setup
