@@ -206,6 +206,19 @@ sleep — shrink the wake window (`WAKE_HOUR_MIN`/`MAX`, default 7 and 23,
 i.e. wakes at 07:00 through 23:00) or create the `nowake` flag if that
 bothers you. Overnight the device hibernates normally.
 
+### Reliability
+
+Every scheduled wake is another suspend/resume round trip, and the Kindle
+wake path is not perfectly robust: in long-term use the device
+occasionally ended up stuck on the sleep screen after a manual wake (one
+case matched KOReader's open
+[#14453](https://github.com/koreader/koreader/issues/14453), one was the
+dead power-event helper the patch now revives, one left no trace in
+`crash.log`). Repeated power presses or a 40 s power-button hold recover
+it. If you'd rather never see that, create the `nowake` flag: the
+refresh at suspend keeps working, so waking and re-sleeping the device
+once is enough to get a fresh image.
+
 ## Troubleshooting
 
 Quick verification: create the `fasttest` flag, sleep the device on Wi-Fi,

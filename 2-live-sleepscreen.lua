@@ -254,11 +254,12 @@ local function scheduleWakeup()
         logger.info(LOG, "no wakeup_mgr on this device, scheduled refresh disabled")
         return
     end
+    -- drop any alarm armed before the flag appeared, then honour the flag
+    Device.wakeup_mgr:removeTasks(nil, wakeupCallback)
     if lfs.attributes(NOWAKE_FILE, "mode") == "file" then
         logger.info(LOG, "nowake flag present, scheduled refresh disabled")
         return
     end
-    Device.wakeup_mgr:removeTasks(nil, wakeupCallback)
     local secs = nextWakeSeconds()
     Device.wakeup_mgr:addTask(secs, wakeupCallback)
     logger.info(LOG, "next scheduled refresh in", secs, "s")
